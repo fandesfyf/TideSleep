@@ -65,4 +65,5 @@ data class SafetyConfig(
 enum class SleepMonitorSource {
     FAKE,
     XIAOMI_WEAR,
+    MIJIA_BRIDGE,
 }
