@@ -8,18 +8,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tidesleep.app.data.SleepMonitorSource
+import com.tidesleep.app.session.SessionPhase
 import com.tidesleep.app.ui.components.SectionHeader
 import com.tidesleep.app.ui.components.TideCard
 import com.tidesleep.app.ui.theme.TideOnSurfaceMuted
@@ -39,6 +43,7 @@ fun DevicesScreen(
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val sleepState by viewModel.sleepState.collectAsStateWithLifecycle()
     val monitorSource by viewModel.monitorSource.collectAsStateWithLifecycle()
+    val session by viewModel.sessionSnapshot.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -89,54 +94,106 @@ fun DevicesScreen(
         }
 
         when (monitorSource) {
-            SleepMonitorSource.FAKE -> FakeDemoCard(viewModel, sleepState)
-            SleepMonitorSource.MIJIA_BRIDGE -> MiJiaBridgeCard(onNavigateToScience, sleepState)
+            SleepMonitorSource.FAKE -> FakeDemoCard(viewModel, sleepState, session.phase)
+            SleepMonitorSource.MIJIA_BRIDGE -> MiJiaBridgeCard(onNavigateToScience, sleepState, viewModel, session.phase)
             SleepMonitorSource.XIAOMI_WEAR -> XiaomiSdkCard(onNavigateToScience)
         }
     }
 }
 
 @Composable
-private fun FakeDemoCard(viewModel: TideSleepViewModel, sleepState: WearableSleepState) {
+private fun FakeDemoCard(
+    viewModel: TideSleepViewModel,
+    sleepState: WearableSleepState,
+    sessionPhase: SessionPhase,
+) {
     TideCard {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("演示触发（Fake）", style = MaterialTheme.typography.titleMedium)
+            Text("演示模式", style = MaterialTheme.typography.titleMedium)
             Text(
-                text = "手动模拟穿戴「入睡/醒来」以在约 1 分钟内验证完整流程。",
+                text = "当前睡眠状态：${sleepLabel(sleepState)}",
                 style = MaterialTheme.typography.bodyMedium,
-                color = TideOnSurfaceMuted,
+                color = if (sleepState == WearableSleepState.Asleep) TideSuccess else TideOnSurfaceMuted,
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Button(
-                    onClick = { viewModel.simulateSleepOnset() },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("模拟入睡")
-                }
-                OutlinedButton(
-                    onClick = { viewModel.simulateWake() },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("模拟醒来")
-                }
-            }
-            Text(
-                text = "当前：${sleepLabel(sleepState)}",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.align(Alignment.CenterHorizontally),
+            DebugSimulateSection(
+                viewModel = viewModel,
+                sessionPhase = sessionPhase,
+                sleepState = sleepState,
             )
         }
     }
 }
 
 @Composable
-private fun MiJiaBridgeCard(onNavigateToScience: () -> Unit, sleepState: WearableSleepState) {
+private fun DebugSimulateSection(
+    viewModel: TideSleepViewModel,
+    sessionPhase: SessionPhase,
+    sleepState: WearableSleepState,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val sessionActive = sessionPhase != SessionPhase.Idle && sessionPhase != SessionPhase.Stopped
+
+    TextButton(
+        onClick = { expanded = !expanded },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(if (expanded) "收起调试选项 ▲" else "展开调试选项 ▼")
+    }
+
+    if (expanded) {
+        Text(
+            text = "高级：入睡触发稀疏脉冲会话（非首页默认路径）。用于验证穿戴入睡/醒来流程。",
+            style = MaterialTheme.typography.bodySmall,
+            color = TideOnSurfaceMuted,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(
+                onClick = {
+                    if (!sessionActive) viewModel.startSleepSession()
+                    viewModel.simulateSleepOnset()
+                },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("模拟入睡")
+            }
+            OutlinedButton(
+                onClick = { viewModel.simulateWake() },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("模拟醒来")
+            }
+        }
+        if (sessionActive) {
+            OutlinedButton(
+                onClick = { viewModel.stopSleepSession() },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("停止入睡触发会话")
+            }
+        }
+        Text(
+            text = "会话：${phaseLabel(sessionPhase)} · 睡眠：${sleepLabel(sleepState)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = TideOnSurfaceMuted,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun MiJiaBridgeCard(
+    onNavigateToScience: () -> Unit,
+    sleepState: WearableSleepState,
+    viewModel: TideSleepViewModel,
+    sessionPhase: SessionPhase,
+) {
     TideCard {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("米家自动化桥接", style = MaterialTheme.typography.titleMedium)
@@ -149,7 +206,7 @@ private fun MiJiaBridgeCard(onNavigateToScience: () -> Unit, sleepState: Wearabl
 
 或使用广播 action：${SleepStateParser.ACTION_SLEEP_STATE}，extra「state」= asleep / awake。
 
-请先「开启今晚」，再让自动化触发；前台服务会保持会话监听。
+高级模式：在设备页展开调试选项，启动「入睡触发稀疏脉冲」会话。
                 """.trimIndent(),
                 style = MaterialTheme.typography.bodyMedium,
                 color = TideOnSurfaceMuted,
@@ -158,6 +215,11 @@ private fun MiJiaBridgeCard(onNavigateToScience: () -> Unit, sleepState: Wearabl
                 text = "当前睡眠状态：${sleepLabel(sleepState)}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (sleepState == WearableSleepState.Asleep) TideSuccess else TideOnSurfaceMuted,
+            )
+            DebugSimulateSection(
+                viewModel = viewModel,
+                sessionPhase = sessionPhase,
+                sleepState = sleepState,
             )
             OutlinedButton(onClick = onNavigateToScience, modifier = Modifier.fillMaxWidth()) {
                 Text("查看米家配置向导")
@@ -212,4 +274,13 @@ private fun sleepLabel(state: WearableSleepState): String = when (state) {
     WearableSleepState.Asleep -> "睡着"
     WearableSleepState.Awake -> "清醒"
     WearableSleepState.Unknown -> "未知"
+}
+
+private fun phaseLabel(phase: SessionPhase): String = when (phase) {
+    SessionPhase.Arming -> "准备中"
+    SessionPhase.WaitingSleep -> "等待入睡"
+    SessionPhase.WaitingDelay -> "入睡延迟中"
+    SessionPhase.Stimulating -> "刺激进行中"
+    SessionPhase.Stopped -> "已结束"
+    SessionPhase.Idle -> "未开启"
 }

@@ -26,10 +26,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tidesleep.app.data.SafetyPreset
-import com.tidesleep.app.session.SessionPhase
 import com.tidesleep.app.ui.components.DeviceStatusChips
-import com.tidesleep.app.ui.components.TideCard
 import com.tidesleep.app.ui.theme.TideBackground
+import com.tidesleep.app.ui.theme.TideError
 import com.tidesleep.app.ui.theme.TideOnSurfaceMuted
 import com.tidesleep.app.ui.theme.TidePrimary
 import com.tidesleep.app.ui.theme.TidePrimaryVariant
@@ -42,13 +41,11 @@ fun TonightHomeScreen(
     onNavigateToScience: () -> Unit,
     onNavigateToSafety: () -> Unit,
 ) {
-    val session by viewModel.sessionSnapshot.collectAsStateWithLifecycle()
+    val isPlaying by viewModel.isContinuousPlaying.collectAsStateWithLifecycle()
     val safetyConfig by viewModel.safetyConfig.collectAsStateWithLifecycle()
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val monitorSource by viewModel.monitorSource.collectAsStateWithLifecycle()
     val disclaimerAccepted by viewModel.disclaimerAccepted.collectAsStateWithLifecycle()
-
-    val isActive = session.phase != SessionPhase.Idle && session.phase != SessionPhase.Stopped
 
     Column(
         modifier = Modifier
@@ -61,14 +58,14 @@ fun TonightHomeScreen(
         if (safetyConfig.preset == SafetyPreset.DEMO) {
             AssistChip(
                 onClick = onNavigateToSafety,
-                label = { Text("演示预设 · 延迟 ${safetyConfig.formatPostSleepDelay()}") },
+                label = { Text("演示预设 · 音量 ${safetyConfig.volumePercent}%") },
             )
         }
 
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = if (isActive) phaseLabel(session.phase) else "今晚已待命",
+            text = if (isPlaying) "粉红噪声播放中" else "今晚已待命",
             style = MaterialTheme.typography.titleMedium,
             color = TideOnSurfaceMuted,
         )
@@ -76,15 +73,23 @@ fun TonightHomeScreen(
         Spacer(modifier = Modifier.weight(0.3f))
 
         TonightOrbButton(
-            isActive = isActive,
+            isPlaying = isPlaying,
             enabled = disclaimerAccepted,
             onClick = {
-                if (isActive) viewModel.stopTonight() else viewModel.startTonight()
+                if (isPlaying) {
+                    viewModel.stopContinuousPinkNoise()
+                } else {
+                    viewModel.startContinuousPinkNoise()
+                }
             },
         )
 
         Text(
-            text = "确认入睡后再播放粉红噪声脉冲",
+            text = if (isPlaying) {
+                "连续粉红噪声 · 音量 ${safetyConfig.volumePercent}%"
+            } else {
+                "点击立即开始连续粉红噪声（收音机无信号般的嘶嘶声）"
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = TideOnSurfaceMuted,
             textAlign = TextAlign.Center,
@@ -107,16 +112,6 @@ fun TonightHomeScreen(
             monitorSource = monitorSource,
             modifier = Modifier.padding(bottom = 12.dp),
         )
-
-        if (session.statusMessage.isNotBlank() && isActive) {
-            TideCard {
-                Text(
-                    text = session.statusMessage,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(16.dp),
-                )
-            }
-        }
     }
 }
 
@@ -133,20 +128,27 @@ private fun RowWithHeader() {
 
 @Composable
 private fun TonightOrbButton(
-    isActive: Boolean,
+    isPlaying: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    val glowBrush = Brush.radialGradient(
-        colors = listOf(TidePrimary.copy(alpha = 0.5f), TideBackground),
-    )
+    val glowBrush = if (isPlaying) {
+        Brush.radialGradient(
+            colors = listOf(TideError.copy(alpha = 0.45f), TideBackground),
+        )
+    } else {
+        Brush.radialGradient(
+            colors = listOf(TidePrimary.copy(alpha = 0.5f), TideBackground),
+        )
+    }
+    val borderColor = if (isPlaying) TideError.copy(alpha = 0.8f) else TidePrimaryVariant.copy(alpha = 0.6f)
 
     Box(
         modifier = Modifier
             .size(220.dp)
             .clip(CircleShape)
             .background(glowBrush)
-            .border(2.dp, TidePrimaryVariant.copy(alpha = 0.6f), CircleShape)
+            .border(2.dp, borderColor, CircleShape)
             .clickable(enabled = enabled) { onClick() },
         contentAlignment = Alignment.Center,
     ) {
@@ -154,31 +156,25 @@ private fun TonightOrbButton(
             modifier = Modifier
                 .size(180.dp)
                 .clip(CircleShape)
-                .background(TideSurface),
+                .background(if (isPlaying) TideError.copy(alpha = 0.15f) else TideSurface),
             contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = if (isActive) "停止今晚" else "开启今晚",
+                    text = if (isPlaying) "停止" else "开启粉红噪声",
                     style = MaterialTheme.typography.headlineMedium,
+                    color = if (isPlaying) TideError else MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Center,
                 )
-                Text(
-                    text = "汐眠睡眠模式",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TideOnSurfaceMuted,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
+                if (!isPlaying) {
+                    Text(
+                        text = "立即开始播放",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TideOnSurfaceMuted,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
             }
         }
     }
-}
-
-private fun phaseLabel(phase: SessionPhase): String = when (phase) {
-    SessionPhase.Arming -> "准备中"
-    SessionPhase.WaitingSleep -> "等待入睡"
-    SessionPhase.WaitingDelay -> "入睡延迟中"
-    SessionPhase.Stimulating -> "刺激进行中"
-    SessionPhase.Stopped -> "已结束"
-    SessionPhase.Idle -> "未开启"
 }

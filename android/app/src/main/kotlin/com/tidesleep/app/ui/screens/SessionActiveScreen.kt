@@ -113,7 +113,7 @@ fun SessionActiveScreen(
         )
 
         Button(
-            onClick = { viewModel.stopTonight() },
+            onClick = { viewModel.stopSleepSession() },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
