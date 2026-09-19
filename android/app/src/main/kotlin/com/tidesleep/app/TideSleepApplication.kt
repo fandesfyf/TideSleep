@@ -3,9 +3,13 @@ package com.tidesleep.app
 import android.app.Application
 import com.tidesleep.app.audio.ContinuousPinkNoisePlayer
 import com.tidesleep.app.audio.PinkNoisePulsePlayer
+import com.tidesleep.app.data.PlaybackStartPreferences
 import com.tidesleep.app.data.SafetyConfig
 import com.tidesleep.app.data.SleepMonitorSource
 import com.tidesleep.app.data.TideSleepRepository
+import com.tidesleep.app.playback.PinkNoiseScheduler
+import com.tidesleep.app.playback.PlaybackStartManager
+import com.tidesleep.app.playback.PlaybackStartUiState
 import com.tidesleep.app.session.SessionEngine
 import com.tidesleep.app.wearable.FakeSleepMonitor
 import com.tidesleep.app.wearable.MiJiaSleepBridgeMonitor
@@ -48,6 +52,9 @@ class TideSleepApplication : Application() {
     lateinit var continuousPlayer: ContinuousPinkNoisePlayer
         private set
 
+    lateinit var playbackStartManager: PlaybackStartManager
+        private set
+
     private val _continuousPlaying = MutableStateFlow(false)
     val continuousPlayingFlow: StateFlow<Boolean> = _continuousPlaying.asStateFlow()
 
@@ -70,10 +77,28 @@ class TideSleepApplication : Application() {
         _disclaimerAccepted.value = prefs.disclaimerAccepted
 
         continuousPlayer = ContinuousPinkNoisePlayer(this, applicationScope)
+        playbackStartManager = PlaybackStartManager(
+            scope = applicationScope,
+            scheduler = PinkNoiseScheduler(this),
+            onStartPlayback = { startContinuousPinkNoise() },
+            onStopPlayback = { stopContinuousPinkNoise() },
+            onPreferencesChanged = { savePlaybackStartPreferences(it) },
+            isActuallyPlaying = { continuousPlayer.playing },
+        )
+        playbackStartManager.restore(prefs.playbackStart)
+
         sleepMonitor = createMonitor(prefs.monitorSource)
         bindSleepMonitor(sleepMonitor)
         sessionEngine = createSessionEngine()
     }
+
+    fun onScheduledPinkNoiseStart() {
+        playbackStartManager.onScheduledTrigger()
+        com.tidesleep.app.session.TideSleepSessionService.start(this)
+    }
+
+    val playbackStartState: StateFlow<PlaybackStartUiState>
+        get() = playbackStartManager.state
 
     fun startContinuousPinkNoise() {
         continuousPlayer.start(_safetyConfig.value)
@@ -83,6 +108,12 @@ class TideSleepApplication : Application() {
     fun stopContinuousPinkNoise() {
         continuousPlayer.stop()
         _continuousPlaying.value = false
+    }
+
+    private fun savePlaybackStartPreferences(prefs: PlaybackStartPreferences) {
+        applicationScope.launch {
+            repository.savePlaybackStartPreferences(prefs)
+        }
     }
 
     fun updateSafetyConfig(config: SafetyConfig) {

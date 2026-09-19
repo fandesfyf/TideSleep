@@ -42,14 +42,14 @@ fun DeviceStatusChips(
             icon = { Icon(Icons.Outlined.Watch, null, Modifier.size(20.dp)) },
             title = "手表",
             status = when {
-                monitorSource == SleepMonitorSource.FAKE && watchConnected -> "演示已连接"
-                monitorSource == SleepMonitorSource.MIJIA_BRIDGE && watchConnected -> "米家桥接"
-                monitorSource == SleepMonitorSource.MIJIA_BRIDGE -> "待配置自动化"
+                monitorSource == SleepMonitorSource.FAKE && watchConnected -> "演示模式"
+                monitorSource == SleepMonitorSource.MIJIA_BRIDGE && watchConnected -> "桥接就绪"
+                monitorSource == SleepMonitorSource.MIJIA_BRIDGE -> "待配置"
                 monitorSource == SleepMonitorSource.XIAOMI_WEAR && watchConnected -> "已连接"
                 monitorSource == SleepMonitorSource.XIAOMI_WEAR && !XiaomiWearSdk.isAvailable() ->
-                    "需 SDK AAR"
+                    "需 SDK"
                 monitorSource == SleepMonitorSource.XIAOMI_WEAR -> "连接中"
-                else -> "待连接"
+                else -> "未连接"
             },
             isPositive = watchConnected,
         )
@@ -57,7 +57,7 @@ fun DeviceStatusChips(
             modifier = Modifier.weight(1f),
             icon = { Icon(Icons.Outlined.Speaker, null, Modifier.size(20.dp)) },
             title = "音箱",
-            status = if (monitorSource == SleepMonitorSource.MIJIA_BRIDGE) "可选米家" else "米家待配置",
+            status = if (monitorSource == SleepMonitorSource.MIJIA_BRIDGE) "米家可用" else "待配置",
             isPositive = monitorSource == SleepMonitorSource.MIJIA_BRIDGE,
         )
         DeviceChip(

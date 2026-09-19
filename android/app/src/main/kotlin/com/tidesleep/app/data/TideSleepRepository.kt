@@ -27,6 +27,7 @@ data class UserPreferences(
     val monitorSource: SleepMonitorSource = SleepMonitorSource.FAKE,
     val disclaimerAccepted: Boolean = false,
     val nightHistory: List<NightSummary> = emptyList(),
+    val playbackStart: PlaybackStartPreferences = PlaybackStartPreferences(),
 )
 
 class TideSleepRepository(private val context: Context) {
@@ -41,6 +42,7 @@ class TideSleepRepository(private val context: Context) {
             ) { SleepMonitorSource.FAKE },
             disclaimerAccepted = prefs[Keys.DISCLAIMER_ACCEPTED] ?: false,
             nightHistory = readNightHistory(prefs),
+            playbackStart = readPlaybackStart(prefs),
         )
     }
 
@@ -75,6 +77,33 @@ class TideSleepRepository(private val context: Context) {
             val updated = (listOf(summary) + current).take(30)
             prefs[Keys.NIGHT_HISTORY] = json.encodeToString(updated.map { it.toDto() })
         }
+    }
+
+    suspend fun savePlaybackStartPreferences(prefs: PlaybackStartPreferences) {
+        context.dataStore.edit { store ->
+            store[Keys.PLAYBACK_START_MODE] = prefs.mode.ordinal
+            store[Keys.COUNTDOWN_MINUTES] = prefs.countdownMinutes
+            store[Keys.SCHEDULED_HOUR] = prefs.scheduledHour
+            store[Keys.SCHEDULED_MINUTE] = prefs.scheduledMinute
+            if (prefs.armedTriggerAtEpochMs != null) {
+                store[Keys.ARMED_TRIGGER_AT_MS] = prefs.armedTriggerAtEpochMs
+            } else {
+                store.remove(Keys.ARMED_TRIGGER_AT_MS)
+            }
+        }
+    }
+
+    private fun readPlaybackStart(prefs: Preferences): PlaybackStartPreferences {
+        return PlaybackStartPreferences(
+            mode = PlaybackStartMode.fromOrdinal(prefs[Keys.PLAYBACK_START_MODE] ?: 0),
+            countdownMinutes = prefs[Keys.COUNTDOWN_MINUTES]
+                ?: PlaybackStartPreferences.DEFAULT_COUNTDOWN_MINUTES,
+            scheduledHour = prefs[Keys.SCHEDULED_HOUR]
+                ?: PlaybackStartPreferences.DEFAULT_SCHEDULED_HOUR,
+            scheduledMinute = prefs[Keys.SCHEDULED_MINUTE]
+                ?: PlaybackStartPreferences.DEFAULT_SCHEDULED_MINUTE,
+            armedTriggerAtEpochMs = prefs[Keys.ARMED_TRIGGER_AT_MS],
+        )
     }
 
     private fun readSafetyConfig(prefs: Preferences): SafetyConfig {
@@ -116,5 +145,10 @@ class TideSleepRepository(private val context: Context) {
         val MONITOR_SOURCE = intPreferencesKey("monitor_source")
         val DISCLAIMER_ACCEPTED = booleanPreferencesKey("disclaimer_accepted")
         val NIGHT_HISTORY = stringPreferencesKey("night_history")
+        val PLAYBACK_START_MODE = intPreferencesKey("playback_start_mode")
+        val COUNTDOWN_MINUTES = intPreferencesKey("countdown_minutes")
+        val SCHEDULED_HOUR = intPreferencesKey("scheduled_hour")
+        val SCHEDULED_MINUTE = intPreferencesKey("scheduled_minute")
+        val ARMED_TRIGGER_AT_MS = longPreferencesKey("armed_trigger_at_ms")
     }
 }

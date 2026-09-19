@@ -1,10 +1,10 @@
 # 汐眠 TideSleep
 
-连续粉红噪声助眠；默认点击即播；可选入睡触发稀疏脉冲模式。
+连续粉红噪声助眠；支持立即、倒计时与定时三种启动方式；可选入睡触发稀疏脉冲模式。
 
 > 无 EEG 时为开放环（入睡触发），不等于论文级相位闭环。本项目不提供医疗诊断或治疗建议。
 
-**当前版本：0.3.0-mvp**
+**当前版本：0.4.0-mvp**
 
 ---
 
@@ -12,11 +12,22 @@
 
 **汐眠（TideSleep）** 是一款睡眠音频助手：
 
-- **默认路径**：首页点击 **开启粉红噪声**，立即开始连续 1/f 粉红噪声（类似收音机无信号嘶嘶声），点击 **停止** 结束
+- **立即**：首页选择「立即」后点击 **开始播放**，即刻开始连续 1/f 粉红噪声
+- **倒计时**：选择时长（5–60 分钟）后 **开始倒计时**，归零后自动开始连续播放
+- **定时**：选择时钟时间后 **设定定时**，到点自动开始连续播放（优先 AlarmManager 精确闹钟，不可用时回退 WorkManager）
 - **高级路径**：穿戴确认入睡后触发稀疏 50 ms 脉冲（米家自动化 / 小米穿戴 SDK / 设备页调试选项）
 - 音量受 **安全设置** 上限约束
 
 科学锚点：在慢波峰值时机播放短脉冲可强化慢波与脑脊液（CSF）潮汐（参见 [调研与实施方案](docs/调研与实施方案.md)）。
+
+### v0.4.0 变更
+
+| 首页体验 | 说明 |
+|---|---|
+| 正式化文案与排版 | 去除口语化比喻，采用「粉红噪声 · 连续播放」等产品表述 |
+| 三种启动模式 | 立即 / 倒计时 / 定时，偏好持久化至 DataStore |
+| 待命态进度环 | 倒计时或定时待命时，主按钮外圈显示剩余进度 |
+| 设备状态卡片 | 手表 / 音箱 / 手机，简短正式状态标签 |
 
 ### v0.3.0 变更
 
@@ -55,7 +66,10 @@
 ## 架构概览
 
 ```
-首页 CTA ──► ContinuousPinkNoisePlayer（连续 1/f 粉红噪声）
+首页 CTA ──► PlaybackStartManager（立即 / 倒计时 / 定时）
+                    │
+                    ▼
+         ContinuousPinkNoisePlayer（连续 1/f 粉红噪声）
                     │
 穿戴入睡/出睡 ──► SessionEngine（稀疏脉冲，高级模式）
          ▲              │
@@ -65,11 +79,17 @@
 
 | 模块 | 路径 | 说明 |
 |------|------|------|
+| 启动调度 | `playback/PlaybackStartManager.kt` | 三种模式状态机 + DataStore |
+| 精确闹钟 | `playback/PinkNoiseScheduler.kt` | AlarmManager / WorkManager 回退 |
 | 连续播放 | `audio/ContinuousPinkNoisePlayer.kt` | STREAM AudioTrack 循环写入 |
-| 粉红噪声 | `audio/PinkNoiseGenerator.kt` | 1/f 合成（收音机静态声） |
+| 粉红噪声 | `audio/PinkNoiseGenerator.kt` | 1/f 合成 |
 | 会话引擎 | `session/SessionEngine.kt` | 入睡触发稀疏脉冲（高级） |
-| 持久化 | `data/TideSleepRepository.kt` | DataStore：配置、来源、免责、夜晚记录 |
+| 持久化 | `data/TideSleepRepository.kt` | DataStore：配置、来源、免责、夜晚记录、启动偏好 |
 | UI | `ui/screens/` | Compose 四大 Tab + 会话页 + Onboarding |
+
+### 定时与精确闹钟
+
+Android 12+ 在 `AlarmManager.canScheduleExactAlarms()` 为真时使用精确闹钟；否则通过 WorkManager 一次性任务在目标时间触发播放。Manifest 声明 `SCHEDULE_EXACT_ALARM`，仅在系统允许时实际请求精确调度权限。
 
 ---
 
@@ -109,8 +129,8 @@ cd android
 ### 默认体验（连续粉红噪声）
 
 1. **首次启动** → 勾选非医疗免责 → 「开始使用」
-2. **今晚** → 「开启粉红噪声」→ 立即听到连续嘶嘶声
-3. 点击大红 **停止** 结束播放
+2. **今晚** → 选择 **立即 / 倒计时 / 定时** → 点击主按钮
+3. 播放中点击 **停止** 结束
 
 ### 高级：入睡触发稀疏脉冲（演示模式）
 
