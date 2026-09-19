@@ -4,7 +4,7 @@
 
 > 无 EEG 时为开放环（入睡触发），不等于论文级相位闭环。本项目不提供医疗诊断或治疗建议。
 
-**当前版本：0.1.1-mvp**
+**当前版本：0.2.0-mvp**
 
 ---
 
@@ -12,7 +12,7 @@
 
 **汐眠（TideSleep）** 是一款「确认入睡后再播放」的睡眠音频助手：
 
-- 由小米手表/手环判断入睡与出睡
+- 由小米手表/手环判断入睡与出睡（**米家自动化** 或 **小米穿戴 SDK**）
 - 在安全音量下以 **约 50 ms 粉红噪声短脉冲**（非整夜连续噪声）通过手机扬声器播放
 - 远期可接入 EEG 头环，逼近 MIT 闭环方案
 
@@ -25,6 +25,18 @@
 | 穿戴确认「已入睡 / 已醒来」后触发播音 | EEG 慢波相位检测与闭环锁定 |
 | 稀疏 50 ms 粉红噪声脉冲 | 整夜连续背景噪声 |
 | 出睡即停、单晚上限、入睡延迟 | 医疗疗效承诺 |
+
+---
+
+## 睡眠检测双通路（v0.2.0）
+
+| 通路 | 说明 | 是否需要 AAR |
+|------|------|-------------|
+| **米家自动化** | 深链 `tidesleep://sleep?state=asleep\|awake` 或广播 `ACTION_SLEEP_STATE` | 否 |
+| **小米穿戴 SDK** | `query/subscribe` `ITEM_SLEEP`，DEVICE_MANAGER 权限 | 是（开放平台申请） |
+| **演示模式** | Fake 手动模拟 | 否 |
+
+详见 [小米穿戴与米家接入](docs/小米穿戴与米家接入.md)。
 
 ---
 
@@ -44,9 +56,10 @@
 
 ```
 小米手表/手环 ──入睡/出睡──► 汐眠 App（会话引擎 + 音频引擎）
-                                    │
-                                    ▼
-                              手机扬声器（稀疏脉冲）
+         ▲                        │
+         │                        ▼
+   米家自动化深链            手机扬声器（稀疏脉冲）
+   或 Wear SDK subscribe
 ```
 
 **会话状态机**：`Idle → Arming → WaitingSleep → WaitingDelay → Stimulating → Stopped`
@@ -54,12 +67,11 @@
 | 模块 | 路径 | 说明 |
 |------|------|------|
 | 会话引擎 | `session/SessionEngine.kt` | 延迟开播、超时、出睡即停、历史归档 |
-| 持久化 | `data/TideSleepRepository.kt` | DataStore：配置、免责、夜晚记录 |
+| 持久化 | `data/TideSleepRepository.kt` | DataStore：配置、来源、免责、夜晚记录 |
 | 音频 | `audio/PinkNoisePulsePlayer.kt` | 50 ms 1/f 粉红噪声合成 |
-| 穿戴 | `wearable/` | `FakeSleepMonitor`（演示）+ `XiaomiWearSleepMonitor`（Stub） |
+| 米家桥接 | `wearable/MiJiaSleepBridgeMonitor.kt` | 深链/广播 → 睡眠状态 |
+| 小米 SDK | `wearable/XiaomiWearSleepMonitor.kt` | 可选 AAR，`wear-stubs` 编译桩 |
 | UI | `ui/screens/` | Compose 四大 Tab + 会话页 + Onboarding |
-
-详见 [UI 设计与信息架构](docs/UI设计与信息架构.md)、[代码与原型评审](docs/代码与原型评审.md) 与原型图 `docs/prototypes/`。
 
 ---
 
@@ -69,11 +81,12 @@
 .
 ├── README.md
 ├── docs/
+│   ├── 小米穿戴与米家接入.md
 │   ├── 调研与实施方案.md
-│   ├── UI设计与信息架构.md
-│   ├── 代码与原型评审.md
 │   └── prototypes/
 └── android/
+    ├── app/libs/          # 官方 wearable AAR（自行下载）
+    └── wear-stubs/        # compileOnly SDK 桩
 ```
 
 ---
@@ -84,44 +97,37 @@
 
 - **Android Studio** Ladybug (2024.2) 或更高
 - **JDK 17+**
-- **Android SDK 35**（`compileSdk` / `targetSdk`）
+- **Android SDK 35**
 - **minSdk 26**
 
-### 本地构建
+### 本地构建（无需小米 AAR）
 
 ```bash
 cd android
 ./gradlew assembleDebug
-./gradlew testDebugUnitTest   # SessionEngine JVM 单元测试
-```
-
-安装到设备：
-
-```bash
-./gradlew installDebug
+./gradlew testDebugUnitTest
 ```
 
 ### 演示流程（Fake 模式，≤1 分钟）
 
-1. **首次启动** → 勾选非医疗免责 → 「开始使用」（可点「试听一发脉冲」）
-2. **今晚** → 确认顶部「演示预设 · 延迟 30 秒」→ 点击大圆钮「开启今晚」
-3. **设备** → 「模拟入睡」
-4. 等待 **30 秒** → 自动进入 SessionActive 稀疏脉冲页
-5. 「模拟醒来」或「立即停止」→ **记录** Tab 查看持久化历史（重启后仍保留）
+1. **首次启动** → 勾选非医疗免责 → 「开始使用」
+2. **今晚** → 「开启今晚」
+3. **设备** → 「演示模式」→ 「模拟入睡」
+4. 等待 **30 秒** → 进入脉冲播放
+5. 「模拟醒来」→ **记录** Tab 查看历史
 
----
+### 米家自动化流程（真机）
 
-## 米家 / 小米穿戴前置条件
+1. **设备** → 选择 **米家自动化**
+2. **今晚** → **开启今晚**
+3. 米家配置：睡着 → `tidesleep://sleep?state=asleep`；醒来 → `tidesleep://sleep?state=awake`
+4. 详见 [小米穿戴与米家接入](docs/小米穿戴与米家接入.md)
 
-使用真实穿戴前，请确认：
+### 小米穿戴 SDK
 
-1. 手环/手表已绑定 **小米运动健康**
-2. **米家 App** ≥ 10.0，已开启运动健康数据访问
-3. 穿戴设备出现在米家设备列表
-4. 上报通道：**HyperOS 2+** 手机或 **蓝牙 Mesh 网关**
-5. 集成小米穿戴 SDK（`DEVICE_MANAGER`）或配置米家自动化
-
-设备页内含完整 checklist；详见「科学说明与米家向导」。
+1. [dev.mi.com](https://dev.mi.com/) 申请，包名 `com.tidesleep.app`
+2. AAR 放入 `android/app/libs/`
+3. 重新编译，设备页选择 **小米穿戴 SDK**
 
 ---
 
