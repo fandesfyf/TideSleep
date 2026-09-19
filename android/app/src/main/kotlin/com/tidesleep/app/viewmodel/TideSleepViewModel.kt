@@ -6,9 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.tidesleep.app.TideSleepApplication
 import com.tidesleep.app.audio.PinkNoisePulsePlayer
 import com.tidesleep.app.data.NightSummary
+import com.tidesleep.app.data.PlaybackStartMode
 import com.tidesleep.app.data.SafetyConfig
 import com.tidesleep.app.data.SafetyPreset
 import com.tidesleep.app.data.SleepMonitorSource
+import com.tidesleep.app.playback.PlaybackStartUiState
 import com.tidesleep.app.session.SessionPhase
 import com.tidesleep.app.session.SessionSnapshot
 import com.tidesleep.app.session.StopReason
@@ -28,6 +30,9 @@ class TideSleepViewModel(application: Application) : AndroidViewModel(applicatio
 
     val sessionSnapshot: StateFlow<SessionSnapshot> = app.sessionEngine.snapshot
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionSnapshot())
+
+    val playbackStartState: StateFlow<PlaybackStartUiState> = app.playbackStartState
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlaybackStartUiState())
 
     val isContinuousPlaying: StateFlow<Boolean> = app.continuousPlayingFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
@@ -50,6 +55,37 @@ class TideSleepViewModel(application: Application) : AndroidViewModel(applicatio
     val nightHistory: StateFlow<List<NightSummary>> = app.repository.preferences
         .map { it.nightHistory }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun onHomePrimaryAction() {
+        if (!disclaimerAccepted.value) return
+        val context = getApplication<Application>()
+        val state = playbackStartState.value
+        if (state.isPlaying) {
+            app.playbackStartManager.onPrimaryAction()
+            TideSleepSessionService.stop(context)
+        } else {
+            if (state.mode == PlaybackStartMode.IMMEDIATE && !state.isArmed) {
+                TideSleepSessionService.start(context)
+            }
+            app.playbackStartManager.onPrimaryAction()
+        }
+    }
+
+    fun cancelArmedPlayback() {
+        app.playbackStartManager.cancelArmed()
+    }
+
+    fun setPlaybackStartMode(mode: PlaybackStartMode) {
+        app.playbackStartManager.setMode(mode)
+    }
+
+    fun setCountdownMinutes(minutes: Int) {
+        app.playbackStartManager.setCountdownMinutes(minutes)
+    }
+
+    fun setScheduledTime(hour: Int, minute: Int) {
+        app.playbackStartManager.setScheduledTime(hour, minute)
+    }
 
     fun startContinuousPinkNoise() {
         if (!disclaimerAccepted.value) return
