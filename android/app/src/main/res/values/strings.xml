@@ -2,8 +2,8 @@
 <resources>
     <string name="app_name">汐眠</string>
     <string name="disclaimer">汐眠为睡眠辅助工具，非医疗器械。无 EEG 时为开放环（入睡触发），不等于论文级相位闭环。不提供医疗诊断或治疗建议。</string>
-    <string name="session_notification_title">汐眠 — 今晚就寝中</string>
-    <string name="session_notification_text">正在监听睡眠状态</string>
+    <string name="session_notification_title">汐眠 — 粉红噪声播放中</string>
+    <string name="session_notification_text">连续粉红噪声正在播放</string>
     <string name="session_channel_name">就寝会话</string>
     <string name="session_channel_description">汐眠就寝会话前台服务</string>
 </resources>

@@ -1,6 +1,7 @@
 package com.tidesleep.app
 
 import android.app.Application
+import com.tidesleep.app.audio.ContinuousPinkNoisePlayer
 import com.tidesleep.app.audio.PinkNoisePulsePlayer
 import com.tidesleep.app.data.SafetyConfig
 import com.tidesleep.app.data.SleepMonitorSource
@@ -44,6 +45,12 @@ class TideSleepApplication : Application() {
     lateinit var sessionEngine: SessionEngine
         private set
 
+    lateinit var continuousPlayer: ContinuousPinkNoisePlayer
+        private set
+
+    private val _continuousPlaying = MutableStateFlow(false)
+    val continuousPlayingFlow: StateFlow<Boolean> = _continuousPlaying.asStateFlow()
+
     private val _devices = MutableStateFlow<List<WearableDeviceInfo>>(emptyList())
     val devicesFlow: StateFlow<List<WearableDeviceInfo>> = _devices.asStateFlow()
 
@@ -62,14 +69,28 @@ class TideSleepApplication : Application() {
         _monitorSource.value = prefs.monitorSource
         _disclaimerAccepted.value = prefs.disclaimerAccepted
 
+        continuousPlayer = ContinuousPinkNoisePlayer(this, applicationScope)
         sleepMonitor = createMonitor(prefs.monitorSource)
         bindSleepMonitor(sleepMonitor)
         sessionEngine = createSessionEngine()
     }
 
+    fun startContinuousPinkNoise() {
+        continuousPlayer.start(_safetyConfig.value)
+        _continuousPlaying.value = true
+    }
+
+    fun stopContinuousPinkNoise() {
+        continuousPlayer.stop()
+        _continuousPlaying.value = false
+    }
+
     fun updateSafetyConfig(config: SafetyConfig) {
         _safetyConfig.value = config
         sessionEngine.updateConfig(config)
+        if (_continuousPlaying.value) {
+            continuousPlayer.updateVolume(config.volumePercent)
+        }
         applicationScope.launch {
             repository.saveSafetyConfig(config)
         }

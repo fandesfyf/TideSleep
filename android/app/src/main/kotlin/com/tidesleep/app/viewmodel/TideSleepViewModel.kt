@@ -29,6 +29,9 @@ class TideSleepViewModel(application: Application) : AndroidViewModel(applicatio
     val sessionSnapshot: StateFlow<SessionSnapshot> = app.sessionEngine.snapshot
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionSnapshot())
 
+    val isContinuousPlaying: StateFlow<Boolean> = app.continuousPlayingFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     val devices: StateFlow<List<WearableDeviceInfo>> = app.devicesFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -48,16 +51,31 @@ class TideSleepViewModel(application: Application) : AndroidViewModel(applicatio
         .map { it.nightHistory }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun startTonight() {
+    fun startContinuousPinkNoise() {
+        if (!disclaimerAccepted.value) return
+        val context = getApplication<Application>()
+        TideSleepSessionService.start(context)
+        app.startContinuousPinkNoise()
+    }
+
+    fun stopContinuousPinkNoise() {
+        app.stopContinuousPinkNoise()
+        TideSleepSessionService.stop(getApplication())
+    }
+
+    /** 高级：入睡触发稀疏脉冲会话（非首页默认路径）。 */
+    fun startSleepSession() {
         if (!disclaimerAccepted.value) return
         val context = getApplication<Application>()
         TideSleepSessionService.start(context)
         app.sessionEngine.startTonight()
     }
 
-    fun stopTonight() {
+    fun stopSleepSession() {
         app.sessionEngine.stopTonight(StopReason.Manual)
-        TideSleepSessionService.stop(getApplication())
+        if (!isContinuousPlaying.value) {
+            TideSleepSessionService.stop(getApplication())
+        }
     }
 
     fun simulateSleepOnset() {
