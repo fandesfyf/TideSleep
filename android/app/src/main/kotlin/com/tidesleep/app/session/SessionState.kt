@@ -6,6 +6,7 @@ enum class SessionPhase {
     Idle,
     Arming,
     WaitingSleep,
+    WaitingDelay,
     Stimulating,
     Stopped,
 }
@@ -29,4 +30,6 @@ data class SessionSnapshot(
     val remainingStimulationMs: Long = 0L,
     val timeline: List<SessionTimelineEvent> = emptyList(),
     val statusMessage: String = "",
+    val sleepOnsetAt: Instant? = null,
+    val stimulationStartedAt: Instant? = null,
 )

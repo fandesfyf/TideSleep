@@ -9,33 +9,40 @@ import kotlin.random.Random
 
 /**
  * 生成并播放短促粉红噪声（1/f）脉冲。
- * 默认 50 ms，对齐 MIT 论文刺激时长。
+ * 复用 STREAM AudioTrack，每脉冲仅 write，不在每次脉冲后 stop/flush。
  */
 class PinkNoisePulsePlayer(
     private val config: SafetyConfig,
-) {
-    private val sampleRate = 44_100
-    private var audioTrack: AudioTrack? = null
+) : PulsePlayer {
 
-    fun playPulse() {
+    private val sampleRate = 44_100
+    private var streamTrack: AudioTrack? = null
+
+    override fun playPulse() {
         val durationMs = config.pulseDurationMs
         val numSamples = (sampleRate * durationMs / 1000.0).toInt()
         val buffer = generatePinkNoisePulse(numSamples)
-        val track = obtainTrack()
+        val track = obtainStreamTrack()
         track.write(buffer, 0, buffer.size)
-        track.stop()
-        track.flush()
     }
 
-    fun release() {
-        audioTrack?.release()
-        audioTrack = null
+    override fun release() {
+        streamTrack?.let { track ->
+            if (track.state == AudioTrack.STATE_INITIALIZED) {
+                track.stop()
+                track.flush()
+            }
+            track.release()
+        }
+        streamTrack = null
     }
 
-    private fun obtainTrack(): AudioTrack {
-        val existing = audioTrack
+    private fun obtainStreamTrack(): AudioTrack {
+        val existing = streamTrack
         if (existing != null && existing.state == AudioTrack.STATE_INITIALIZED) {
-            existing.play()
+            if (existing.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                existing.play()
+            }
             return existing
         }
 
@@ -59,15 +66,13 @@ class PinkNoisePulsePlayer(
                     .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                     .build()
             )
-            .setBufferSizeInBytes(minBuffer.coerceAtLeast(sampleRate / 10))
+            .setBufferSizeInBytes(minBuffer.coerceAtLeast(sampleRate / 5))
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
 
-        val maxVolume = track.maxVolume
-        val targetVolume = maxVolume * (config.volumePercent / 100f)
-        track.setVolume(targetVolume)
+        track.setVolume(config.volumePercent / 100f)
         track.play()
-        audioTrack = track
+        streamTrack = track
         return track
     }
 

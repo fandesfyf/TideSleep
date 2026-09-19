@@ -1,6 +1,7 @@
 package com.tidesleep.app.session
 
-import com.tidesleep.app.audio.PinkNoisePulsePlayer
+import com.tidesleep.app.audio.PulsePlayer
+import com.tidesleep.app.data.NightSummary
 import com.tidesleep.app.data.SafetyConfig
 import com.tidesleep.app.wearable.WearableSleepMonitor
 import com.tidesleep.app.wearable.WearableSleepState
@@ -10,10 +11,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import kotlin.random.Random
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -21,14 +23,28 @@ class SessionEngine(
     private val scope: CoroutineScope,
     private val sleepMonitor: WearableSleepMonitor,
     private var config: SafetyConfig,
+    private val createPulsePlayer: (SafetyConfig) -> PulsePlayer,
+    private val onNightArchived: (NightSummary) -> Unit = {},
 ) {
     private val _snapshot = MutableStateFlow(SessionSnapshot())
     val snapshot: StateFlow<SessionSnapshot> = _snapshot.asStateFlow()
 
-    private var pulsePlayer: PinkNoisePulsePlayer? = null
+    private var pulsePlayer: PulsePlayer? = null
     private var stimulationJob: Job? = null
     private var sleepWatchJob: Job? = null
     private var delayJob: Job? = null
+    private var armingJob: Job? = null
+    private var archivedCurrentSession = false
+
+    /** 测试用：取消所有后台任务，不归档会话 */
+    fun cancelAllJobs() {
+        stimulationJob?.cancel()
+        delayJob?.cancel()
+        sleepWatchJob?.cancel()
+        armingJob?.cancel()
+        pulsePlayer?.release()
+        pulsePlayer = null
+    }
 
     fun updateConfig(newConfig: SafetyConfig) {
         config = newConfig
@@ -43,13 +59,16 @@ class SessionEngine(
             return
         }
 
-        transition(
+        // 上一晚已在 stopTonight 时归档；此处仅重置会话
+        archivedCurrentSession = false
+        _snapshot.value = SessionSnapshot(
             phase = SessionPhase.Arming,
-            message = "正在准备监听…",
-            event = "开启今晚就寝",
+            statusMessage = "正在准备监听…",
+            timeline = listOf(SessionTimelineEvent("开启今晚就寝", Instant.now())),
         )
 
-        scope.launch {
+        armingJob?.cancel()
+        armingJob = scope.launch {
             sleepMonitor.start()
             transition(
                 phase = SessionPhase.WaitingSleep,
@@ -61,9 +80,19 @@ class SessionEngine(
     }
 
     fun stopTonight(reason: StopReason = StopReason.Manual) {
+        val phase = _snapshot.value.phase
+        if (phase == SessionPhase.Stopped || phase == SessionPhase.Idle) {
+            return
+        }
+
         stimulationJob?.cancel()
+        stimulationJob = null
         delayJob?.cancel()
+        delayJob = null
         sleepWatchJob?.cancel()
+        sleepWatchJob = null
+        armingJob?.cancel()
+        armingJob = null
         pulsePlayer?.release()
         pulsePlayer = null
 
@@ -84,14 +113,14 @@ class SessionEngine(
             event = reasonLabel,
             stopReason = reason,
         )
+
+        archiveSessionIfNeeded()
     }
 
     private fun watchSleepState() {
         sleepWatchJob?.cancel()
         sleepWatchJob = scope.launch {
-            sleepMonitor.sleepState
-                .distinctUntilChanged()
-                .collect { state ->
+            sleepMonitor.sleepState.collect { state ->
                     when (state) {
                         WearableSleepState.Asleep -> onSleepOnset()
                         WearableSleepState.Awake -> onWakeDetected()
@@ -105,50 +134,64 @@ class SessionEngine(
         val current = _snapshot.value.phase
         if (current != SessionPhase.WaitingSleep) return
 
+        val onsetAt = Instant.now()
         appendTimeline("检测到入睡")
+        _snapshot.value = _snapshot.value.copy(
+            sleepOnsetAt = onsetAt,
+            statusMessage = "已入睡，${config.formatPostSleepDelay()}后开始稀疏脉冲",
+        )
+
         transition(
-            phase = SessionPhase.WaitingSleep,
-            message = "已入睡，${config.postSleepDelay.inWholeMinutes} 分钟后开始稀疏脉冲",
+            phase = SessionPhase.WaitingDelay,
+            message = "入睡延迟中，${config.formatPostSleepDelay()}后开播",
         )
 
         delayJob?.cancel()
         delayJob = scope.launch {
             delay(config.postSleepDelay)
-            if (_snapshot.value.phase == SessionPhase.WaitingSleep) {
+            if (_snapshot.value.phase == SessionPhase.WaitingDelay) {
                 beginStimulation()
             }
         }
     }
 
     private fun onWakeDetected() {
-        if (_snapshot.value.phase == SessionPhase.Stimulating ||
-            _snapshot.value.phase == SessionPhase.WaitingSleep
-        ) {
-            stopTonight(StopReason.WakeDetected)
+        val phase = _snapshot.value.phase
+        when (phase) {
+            SessionPhase.Stimulating, SessionPhase.WaitingDelay -> {
+                if (phase == SessionPhase.WaitingDelay) {
+                    delayJob?.cancel()
+                    delayJob = null
+                }
+                stopTonight(StopReason.WakeDetected)
+            }
+            // WaitingSleep 时忽略初始 Awake 状态（StateFlow 首帧），避免误停
+            else -> Unit
         }
     }
 
     private fun beginStimulation() {
         appendTimeline("开始稀疏粉红噪声脉冲")
         val maxMs = config.maxSessionDuration.inWholeMilliseconds
+        val startedAt = Instant.now()
         _snapshot.value = _snapshot.value.copy(
             phase = SessionPhase.Stimulating,
             remainingStimulationMs = maxMs,
             statusMessage = "刺激进行中（开放环）",
             pulseCount = 0,
+            stimulationStartedAt = startedAt,
         )
 
-        val player = PinkNoisePulsePlayer(config)
+        val player = createPulsePlayer(config)
         pulsePlayer = player
 
         stimulationJob?.cancel()
         stimulationJob = scope.launch {
-            val startedAt = System.currentTimeMillis()
+            var elapsedMs = 0L
             var pulses = 0
 
             while (isActive) {
-                val elapsed = System.currentTimeMillis() - startedAt
-                val remaining = maxMs - elapsed
+                val remaining = maxMs - elapsedMs
                 if (remaining <= 0) {
                     stopTonight(StopReason.Timeout)
                     break
@@ -161,13 +204,35 @@ class SessionEngine(
                     remainingStimulationMs = remaining,
                 )
 
-                val intervalSeconds = Random.nextDouble(
-                    config.pulseIntervalRange.start,
-                    config.pulseIntervalRange.endInclusive,
-                )
-                delay(intervalSeconds.seconds.inWholeMilliseconds)
+                val range = config.pulseIntervalRange
+                val intervalSeconds = if (range.start >= range.endInclusive) {
+                    range.start
+                } else {
+                    Random.nextDouble(range.start, range.endInclusive)
+                }
+                val intervalMs = (intervalSeconds * 1000).toLong().coerceAtMost(remaining)
+                delay(intervalMs)
+                elapsedMs += intervalMs
             }
         }
+    }
+
+    private fun archiveSessionIfNeeded() {
+        if (archivedCurrentSession) return
+        val snap = _snapshot.value
+        if (snap.timeline.isEmpty() || snap.phase == SessionPhase.Idle) return
+
+        val endedAt = snap.timeline.lastOrNull()?.timestamp ?: Instant.now()
+        onNightArchived(
+            NightSummary(
+                date = LocalDate.ofInstant(endedAt, ZoneId.systemDefault()),
+                timeline = snap.timeline,
+                pulseCount = snap.pulseCount,
+                stopReason = snap.stopReason,
+                endedAt = endedAt,
+            )
+        )
+        archivedCurrentSession = true
     }
 
     private fun transition(
@@ -191,10 +256,7 @@ class SessionEngine(
 
     private fun appendTimeline(label: String) {
         _snapshot.value = _snapshot.value.copy(
-            timeline = _snapshot.value.timeline + SessionTimelineEvent(label, Instant.now())
+            timeline = _snapshot.value.timeline + SessionTimelineEvent(label, Instant.now()),
         )
     }
-
-    private val Double.seconds
-        get() = (this * 1000).milliseconds
 }
