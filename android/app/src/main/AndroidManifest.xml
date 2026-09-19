@@ -17,12 +17,42 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.TideSleep">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".bridge.SleepBridgeActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="sleep"
+                    android:scheme="tidesleep" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.tidesleep.app.ACTION_SLEEP_STATE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name=".bridge.SleepStateReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.tidesleep.app.ACTION_SLEEP_STATE" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name=".session.TideSleepSessionService"

@@ -5,6 +5,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+val libsDir = file("libs")
+val xiaomiSdkProperty = project.findProperty("tidesleep.xiaomiSdk")?.toString()?.toBoolean() ?: false
+val xiaomiAarPresent = libsDir.exists() && libsDir.listFiles()?.any { it.extension == "aar" } == true
+val xiaomiSdkEnabled = xiaomiSdkProperty || xiaomiAarPresent
+
 android {
     namespace = "com.tidesleep.app"
     compileSdk = 35
@@ -13,13 +18,15 @@ android {
         applicationId = "com.tidesleep.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.1.1-mvp"
+        versionCode = 3
+        versionName = "0.2.0-mvp"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        buildConfigField("boolean", "XIAOMI_SDK_ENABLED", xiaomiSdkEnabled.toString())
     }
 
     buildTypes {
@@ -43,6 +50,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
@@ -58,6 +66,11 @@ android {
 
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
+
+    compileOnly(project(":wear-stubs"))
+    if (xiaomiSdkEnabled) {
+        implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
+    }
 
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
@@ -75,6 +88,8 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation(project(":wear-stubs"))
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

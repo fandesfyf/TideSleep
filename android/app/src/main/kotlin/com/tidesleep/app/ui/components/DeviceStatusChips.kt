@@ -23,6 +23,7 @@ import com.tidesleep.app.ui.theme.TideSuccess
 import com.tidesleep.app.ui.theme.TideWarning
 import com.tidesleep.app.wearable.WearableConnectionState
 import com.tidesleep.app.wearable.WearableDeviceInfo
+import com.tidesleep.app.wearable.XiaomiWearSdk
 
 @Composable
 fun DeviceStatusChips(
@@ -42,8 +43,12 @@ fun DeviceStatusChips(
             title = "手表",
             status = when {
                 monitorSource == SleepMonitorSource.FAKE && watchConnected -> "演示已连接"
+                monitorSource == SleepMonitorSource.MIJIA_BRIDGE && watchConnected -> "米家桥接"
+                monitorSource == SleepMonitorSource.MIJIA_BRIDGE -> "待配置自动化"
                 monitorSource == SleepMonitorSource.XIAOMI_WEAR && watchConnected -> "已连接"
-                monitorSource == SleepMonitorSource.XIAOMI_WEAR -> "需 SDK"
+                monitorSource == SleepMonitorSource.XIAOMI_WEAR && !XiaomiWearSdk.isAvailable() ->
+                    "需 SDK AAR"
+                monitorSource == SleepMonitorSource.XIAOMI_WEAR -> "连接中"
                 else -> "待连接"
             },
             isPositive = watchConnected,
@@ -52,8 +57,8 @@ fun DeviceStatusChips(
             modifier = Modifier.weight(1f),
             icon = { Icon(Icons.Outlined.Speaker, null, Modifier.size(20.dp)) },
             title = "音箱",
-            status = "米家待配置",
-            isPositive = false,
+            status = if (monitorSource == SleepMonitorSource.MIJIA_BRIDGE) "可选米家" else "米家待配置",
+            isPositive = monitorSource == SleepMonitorSource.MIJIA_BRIDGE,
         )
         DeviceChip(
             modifier = Modifier.weight(1f),

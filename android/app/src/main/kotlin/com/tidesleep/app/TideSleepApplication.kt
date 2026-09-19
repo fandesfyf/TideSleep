@@ -7,6 +7,8 @@ import com.tidesleep.app.data.SleepMonitorSource
 import com.tidesleep.app.data.TideSleepRepository
 import com.tidesleep.app.session.SessionEngine
 import com.tidesleep.app.wearable.FakeSleepMonitor
+import com.tidesleep.app.wearable.MiJiaSleepBridgeMonitor
+import com.tidesleep.app.wearable.SleepStateSink
 import com.tidesleep.app.wearable.WearableDeviceInfo
 import com.tidesleep.app.wearable.WearableSleepMonitor
 import com.tidesleep.app.wearable.WearableSleepState
@@ -48,6 +50,7 @@ class TideSleepApplication : Application() {
     private val _sleepState = MutableStateFlow(WearableSleepState.Unknown)
     val sleepStateFlow: StateFlow<WearableSleepState> = _sleepState.asStateFlow()
 
+    private var sleepStateSink: SleepStateSink? = null
     private var monitorBindingJob: Job? = null
 
     override fun onCreate() {
@@ -84,8 +87,14 @@ class TideSleepApplication : Application() {
         }
     }
 
+    /** 米家深链 / 广播投递睡眠状态（Path A）。 */
+    fun deliverExternalSleepState(state: WearableSleepState) {
+        sleepStateSink?.onExternalSleepState(state)
+    }
+
     private fun bindSleepMonitor(monitor: WearableSleepMonitor) {
         monitorBindingJob?.cancel()
+        sleepStateSink = monitor as? SleepStateSink
         monitorBindingJob = applicationScope.launch {
             launch { monitor.devices.collect { _devices.value = it } }
             launch { monitor.sleepState.collect { _sleepState.value = it } }
@@ -116,7 +125,8 @@ class TideSleepApplication : Application() {
     private fun createMonitor(source: SleepMonitorSource): WearableSleepMonitor {
         return when (source) {
             SleepMonitorSource.FAKE -> FakeSleepMonitor()
-            SleepMonitorSource.XIAOMI_WEAR -> XiaomiWearSleepMonitor()
+            SleepMonitorSource.MIJIA_BRIDGE -> MiJiaSleepBridgeMonitor()
+            SleepMonitorSource.XIAOMI_WEAR -> XiaomiWearSleepMonitor(this)
         }
     }
 }

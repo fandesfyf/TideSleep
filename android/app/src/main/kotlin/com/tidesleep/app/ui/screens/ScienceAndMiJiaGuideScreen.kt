@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import com.tidesleep.app.ui.components.TideCard
 import com.tidesleep.app.ui.theme.TideOnSurfaceMuted
 import com.tidesleep.app.ui.theme.TideWarning
+import com.tidesleep.app.wearable.SleepStateParser
+import com.tidesleep.app.wearable.WearableSleepState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,18 +84,47 @@ MIT 研究表明：在慢波峰值时机播放约 50 ms 粉红噪声短脉冲，
 
             TideCard {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("米家自动化配置（无代码验证）", style = MaterialTheme.typography.titleMedium)
+                    Text("米家自动化（Path A · 今日可用）", style = MaterialTheme.typography.titleMedium)
                     Text(
                         text = """
+前置条件：
 1. 手环/手表绑定「小米运动健康」
-2. 米家 App 开启运动健康数据访问
-3. 确认穿戴出现在米家设备列表
-4. 创建自动化：
-   • 若「睡眠状态 = 睡着」→ 通知汐眠 / 播放指定内容
-   • 若「醒来」→ 停止播放
-5. 注意：判睡可能滞后真实入睡数分钟，请配合 App 内「入睡延迟」设置
+2. 米家 App ≥ 10.0，开启运动健康数据访问
+3. 穿戴出现在米家设备列表
+4. HyperOS 2+ 手机或蓝牙 Mesh 网关（部分小爱音箱不支持网关）
 
-前置：米家 10.0+、HyperOS 2+ 手机或蓝牙 Mesh 网关（部分小爱音箱不支持网关）
+配置步骤：
+1. 汐眠「设备」页选择 **米家自动化**
+2. 「今晚」点击 **开启今晚**（保持前台服务）
+3. 米家 → 自动化 → 新建：
+   • **若** 穿戴「睡眠状态」= **睡着**
+     → **打开链接** ${SleepStateParser.toDeepLink(WearableSleepState.Asleep)}
+   • **若** 穿戴「睡眠状态」= **醒来**
+     → **打开链接** ${SleepStateParser.toDeepLink(WearableSleepState.Awake)}
+4. 可选：用「发送广播」action=${SleepStateParser.ACTION_SLEEP_STATE}，extra state=asleep/awake
+
+截图 checklist：自动化触发条件页、打开链接动作页、HyperOS 数据访问开关。
+
+判睡可能滞后真实入睡数分钟，请配合 App「入睡延迟」设置。
+                        """.trimIndent(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TideOnSurfaceMuted,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
+
+            TideCard {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("小米穿戴 SDK（Path B · 需 AAR）", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = """
+1. dev.mi.com 申请第三方能力，包名 com.tidesleep.app
+2. 下载 wearable AAR 放入 android/app/libs/
+3. 设备页选择 **小米穿戴 SDK**，授予 DEVICE_MANAGER
+4. App 内 subscribe ITEM_SLEEP，直接接收入睡/出睡
+
+详见 docs/小米穿戴与米家接入.md
                         """.trimIndent(),
                         style = MaterialTheme.typography.bodyMedium,
                         color = TideOnSurfaceMuted,

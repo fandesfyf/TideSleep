@@ -24,9 +24,12 @@ import com.tidesleep.app.ui.components.SectionHeader
 import com.tidesleep.app.ui.components.TideCard
 import com.tidesleep.app.ui.theme.TideOnSurfaceMuted
 import com.tidesleep.app.ui.theme.TideSuccess
+import com.tidesleep.app.ui.theme.TideWarning
 import com.tidesleep.app.viewmodel.TideSleepViewModel
+import com.tidesleep.app.wearable.SleepStateParser
 import com.tidesleep.app.wearable.WearableConnectionState
 import com.tidesleep.app.wearable.WearableSleepState
+import com.tidesleep.app.wearable.XiaomiWearSdk
 
 @Composable
 fun DevicesScreen(
@@ -56,9 +59,14 @@ fun DevicesScreen(
                 label = { Text("演示模式") },
             )
             FilterChip(
+                selected = monitorSource == SleepMonitorSource.MIJIA_BRIDGE,
+                onClick = { viewModel.switchMonitorSource(SleepMonitorSource.MIJIA_BRIDGE) },
+                label = { Text("米家自动化") },
+            )
+            FilterChip(
                 selected = monitorSource == SleepMonitorSource.XIAOMI_WEAR,
                 onClick = { viewModel.switchMonitorSource(SleepMonitorSource.XIAOMI_WEAR) },
-                label = { Text("小米穿戴") },
+                label = { Text("小米穿戴 SDK") },
             )
         }
 
@@ -80,67 +88,115 @@ fun DevicesScreen(
             }
         }
 
-        if (monitorSource == SleepMonitorSource.FAKE) {
-            TideCard {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("演示触发（Fake）", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        text = "手动模拟穿戴「入睡/醒来」以在约 1 分钟内验证完整流程。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TideOnSurfaceMuted,
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Button(
-                            onClick = { viewModel.simulateSleepOnset() },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text("模拟入睡")
-                        }
-                        OutlinedButton(
-                            onClick = { viewModel.simulateWake() },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text("模拟醒来")
-                        }
-                    }
-                    Text(
-                        text = "当前：${sleepLabel(sleepState)}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.align(Alignment.CenterHorizontally),
-                    )
-                }
-            }
-        } else {
-            XiaomiChecklistCard(onNavigateToScience = onNavigateToScience)
+        when (monitorSource) {
+            SleepMonitorSource.FAKE -> FakeDemoCard(viewModel, sleepState)
+            SleepMonitorSource.MIJIA_BRIDGE -> MiJiaBridgeCard(onNavigateToScience, sleepState)
+            SleepMonitorSource.XIAOMI_WEAR -> XiaomiSdkCard(onNavigateToScience)
         }
     }
 }
 
 @Composable
-private fun XiaomiChecklistCard(onNavigateToScience: () -> Unit) {
+private fun FakeDemoCard(viewModel: TideSleepViewModel, sleepState: WearableSleepState) {
+    TideCard {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("演示触发（Fake）", style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = "手动模拟穿戴「入睡/醒来」以在约 1 分钟内验证完整流程。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TideOnSurfaceMuted,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    onClick = { viewModel.simulateSleepOnset() },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("模拟入睡")
+                }
+                OutlinedButton(
+                    onClick = { viewModel.simulateWake() },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("模拟醒来")
+                }
+            }
+            Text(
+                text = "当前：${sleepLabel(sleepState)}",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            )
+        }
+    }
+}
+
+@Composable
+private fun MiJiaBridgeCard(onNavigateToScience: () -> Unit, sleepState: WearableSleepState) {
     TideCard {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("需小米穿戴 SDK / 米家自动化", style = MaterialTheme.typography.titleMedium)
+            Text("米家自动化桥接", style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = """
+在米家创建自动化，将穿戴睡眠状态映射为深链：
+
+• 睡着 → ${SleepStateParser.toDeepLink(WearableSleepState.Asleep)}
+• 醒来 → ${SleepStateParser.toDeepLink(WearableSleepState.Awake)}
+
+或使用广播 action：${SleepStateParser.ACTION_SLEEP_STATE}，extra「state」= asleep / awake。
+
+请先「开启今晚」，再让自动化触发；前台服务会保持会话监听。
+                """.trimIndent(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = TideOnSurfaceMuted,
+            )
+            Text(
+                text = "当前睡眠状态：${sleepLabel(sleepState)}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (sleepState == WearableSleepState.Asleep) TideSuccess else TideOnSurfaceMuted,
+            )
+            OutlinedButton(onClick = onNavigateToScience, modifier = Modifier.fillMaxWidth()) {
+                Text("查看米家配置向导")
+            }
+        }
+    }
+}
+
+@Composable
+private fun XiaomiSdkCard(onNavigateToScience: () -> Unit) {
+    val sdkMissing = !XiaomiWearSdk.isAvailable()
+    TideCard {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("小米穿戴 SDK", style = MaterialTheme.typography.titleMedium)
+            if (sdkMissing) {
+                Text(
+                    text = XiaomiWearSdk.MISSING_AAR_MESSAGE,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TideWarning,
+                )
+                Text(
+                    text = "将官方 AAR 放入 android/app/libs/ 后重新编译；或改用「米家自动化」。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TideOnSurfaceMuted,
+                )
+            }
             Text(
                 text = """
 ☐ 手环/手表绑定「小米运动健康」
-☐ 米家 App 开启运动健康数据访问
-☐ 穿戴出现在米家设备列表
-☐ 集成小米穿戴第三方 SDK（DEVICE_MANAGER）
-☐ 或配置米家自动化：睡着→通知/播放，醒来→停止
-☐ HyperOS 2+ 手机或蓝牙 Mesh 网关
+☐ 开放平台申请第三方能力（包名 com.tidesleep.app）
+☐ libs/ 放入官方 wearable AAR
+☐ 授予 DEVICE_MANAGER + NOTIFY
+☐ subscribe ITEM_SLEEP（入睡/出睡）
                 """.trimIndent(),
                 style = MaterialTheme.typography.bodyMedium,
                 color = TideOnSurfaceMuted,
             )
             OutlinedButton(onClick = onNavigateToScience, modifier = Modifier.fillMaxWidth()) {
-                Text("查看米家向导")
+                Text("查看接入文档")
             }
         }
     }

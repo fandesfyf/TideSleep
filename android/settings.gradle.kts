@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "TideSleep"
 include(":app")
+include(":wear-stubs")
