@@ -18,8 +18,8 @@ android {
         applicationId = "com.tidesleep.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.3.0-mvp"
+        versionCode = 5
+        versionName = "0.4.0-mvp"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -85,6 +85,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.navigation:navigation-compose:2.8.4")
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
