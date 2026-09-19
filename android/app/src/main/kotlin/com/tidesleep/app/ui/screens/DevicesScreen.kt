@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -27,20 +29,24 @@ import com.tidesleep.app.wearable.WearableConnectionState
 import com.tidesleep.app.wearable.WearableSleepState
 
 @Composable
-fun DevicesScreen(viewModel: TideSleepViewModel) {
+fun DevicesScreen(
+    viewModel: TideSleepViewModel,
+    onNavigateToScience: () -> Unit = {},
+) {
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val sleepState by viewModel.sleepState.collectAsStateWithLifecycle()
-    val monitorSource = viewModel.monitorSource
+    val monitorSource by viewModel.monitorSource.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         SectionHeader(
-            title = "设备",
-            subtitle = "小米手表/手环睡眠状态订阅",
+            title = "我的设备",
+            subtitle = "管理睡眠设备与播放来源",
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -80,12 +86,9 @@ fun DevicesScreen(viewModel: TideSleepViewModel) {
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    Text("演示触发（Fake）", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = "演示触发（Fake）",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = "在无真机时，手动模拟穿戴「入睡/醒来」以验证会话引擎。",
+                        text = "手动模拟穿戴「入睡/醒来」以在约 1 分钟内验证完整流程。",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TideOnSurfaceMuted,
                     )
@@ -107,22 +110,37 @@ fun DevicesScreen(viewModel: TideSleepViewModel) {
                         }
                     }
                     Text(
-                        text = "当前状态：${sleepLabel(sleepState)}",
+                        text = "当前：${sleepLabel(sleepState)}",
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.align(Alignment.CenterHorizontally),
                     )
                 }
             }
         } else {
-            TideCard {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("小米穿戴 SDK", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        text = "需集成小米穿戴第三方接口并授予 DEVICE_MANAGER 权限。当前为 Stub，请先在「演示模式」验证流程。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TideOnSurfaceMuted,
-                    )
-                }
+            XiaomiChecklistCard(onNavigateToScience = onNavigateToScience)
+        }
+    }
+}
+
+@Composable
+private fun XiaomiChecklistCard(onNavigateToScience: () -> Unit) {
+    TideCard {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("需小米穿戴 SDK / 米家自动化", style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = """
+☐ 手环/手表绑定「小米运动健康」
+☐ 米家 App 开启运动健康数据访问
+☐ 穿戴出现在米家设备列表
+☐ 集成小米穿戴第三方 SDK（DEVICE_MANAGER）
+☐ 或配置米家自动化：睡着→通知/播放，醒来→停止
+☐ HyperOS 2+ 手机或蓝牙 Mesh 网关
+                """.trimIndent(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = TideOnSurfaceMuted,
+            )
+            OutlinedButton(onClick = onNavigateToScience, modifier = Modifier.fillMaxWidth()) {
+                Text("查看米家向导")
             }
         }
     }

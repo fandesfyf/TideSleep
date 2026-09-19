@@ -23,14 +23,15 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.tidesleep.app.session.SessionPhase
+import com.tidesleep.app.ui.components.OnboardingDialog
 import com.tidesleep.app.ui.screens.AboutScreen
 import com.tidesleep.app.ui.screens.DevicesScreen
+import com.tidesleep.app.ui.screens.ProfileScreen
 import com.tidesleep.app.ui.screens.RecordsScreen
 import com.tidesleep.app.ui.screens.SafetySettingsScreen
 import com.tidesleep.app.ui.screens.ScienceAndMiJiaGuideScreen
 import com.tidesleep.app.ui.screens.SessionActiveScreen
 import com.tidesleep.app.ui.screens.TonightHomeScreen
-import com.tidesleep.app.ui.screens.ProfileScreen
 import com.tidesleep.app.viewmodel.TideSleepViewModel
 
 private data class BottomTab(
@@ -50,14 +51,23 @@ private val bottomTabs = listOf(
 fun TideSleepNavHost(viewModel: TideSleepViewModel) {
     val navController = rememberNavController()
     val session by viewModel.sessionSnapshot.collectAsStateWithLifecycle()
+    val disclaimerAccepted by viewModel.disclaimerAccepted.collectAsStateWithLifecycle()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+
+    if (!disclaimerAccepted) {
+        OnboardingDialog(
+            onAccept = { viewModel.acceptDisclaimer() },
+            onPlayCalibration = { viewModel.playCalibrationPulse() },
+        )
+    }
 
     val showBottomBar = currentRoute in bottomTabs.map { it.route }
 
     LaunchedEffect(session.phase) {
         val active = session.phase == SessionPhase.Stimulating ||
             session.phase == SessionPhase.WaitingSleep ||
+            session.phase == SessionPhase.WaitingDelay ||
             session.phase == SessionPhase.Arming
         if (active && currentRoute != TideSleepRoutes.SessionActive) {
             navController.navigate(TideSleepRoutes.SessionActive) {
@@ -107,7 +117,12 @@ fun TideSleepNavHost(viewModel: TideSleepViewModel) {
                 )
             }
             composable(TideSleepRoutes.Devices) {
-                DevicesScreen(viewModel = viewModel)
+                DevicesScreen(
+                    viewModel = viewModel,
+                    onNavigateToScience = {
+                        navController.navigate(TideSleepRoutes.ScienceGuide)
+                    },
+                )
             }
             composable(TideSleepRoutes.Records) {
                 RecordsScreen(viewModel = viewModel)

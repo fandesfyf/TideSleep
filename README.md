@@ -4,6 +4,8 @@
 
 > 无 EEG 时为开放环（入睡触发），不等于论文级相位闭环。本项目不提供医疗诊断或治疗建议。
 
+**当前版本：0.1.1-mvp**
+
 ---
 
 ## 产品简介
@@ -26,6 +28,18 @@
 
 ---
 
+## 安全预设
+
+| 预设 | 入睡后延迟 | 单晚上限 | 音量 | 用途 |
+|------|-----------|---------|------|------|
+| **演示**（首次安装默认） | 30 秒 | 10 分钟 | 20% | Fake 流程 ≤1 分钟 |
+| **科学默认** | 15 分钟 | 90 分钟 | 25% | 对齐论文开放环近似 |
+| **自定义** | 可调 | 可调 | 可调 | 微调后自动切换 |
+
+设置路径：**我的 → 安全设置**，可「试听一发脉冲」校准音量。
+
+---
+
 ## 架构概览
 
 ```
@@ -35,16 +49,17 @@
                               手机扬声器（稀疏脉冲）
 ```
 
-**会话状态机**：`Idle → Arming → WaitingSleep → Stimulating → Stopped`
+**会话状态机**：`Idle → Arming → WaitingSleep → WaitingDelay → Stimulating → Stopped`
 
 | 模块 | 路径 | 说明 |
 |------|------|------|
-| 会话引擎 | `session/SessionEngine.kt` | 延迟开播、超时、出睡即停 |
+| 会话引擎 | `session/SessionEngine.kt` | 延迟开播、超时、出睡即停、历史归档 |
+| 持久化 | `data/TideSleepRepository.kt` | DataStore：配置、免责、夜晚记录 |
 | 音频 | `audio/PinkNoisePulsePlayer.kt` | 50 ms 1/f 粉红噪声合成 |
 | 穿戴 | `wearable/` | `FakeSleepMonitor`（演示）+ `XiaomiWearSleepMonitor`（Stub） |
-| UI | `ui/screens/` | Compose 四大 Tab + 会话页 |
+| UI | `ui/screens/` | Compose 四大 Tab + 会话页 + Onboarding |
 
-详见 [UI 设计与信息架构](docs/UI设计与信息架构.md) 与原型图 `docs/prototypes/`。
+详见 [UI 设计与信息架构](docs/UI设计与信息架构.md)、[代码与原型评审](docs/代码与原型评审.md) 与原型图 `docs/prototypes/`。
 
 ---
 
@@ -56,9 +71,9 @@
 ├── docs/
 │   ├── 调研与实施方案.md
 │   ├── UI设计与信息架构.md
-│   └── prototypes/          # UI 原型 PNG
-└── android/                 # Android 工程（com.tidesleep.app）
-    └── app/src/main/kotlin/com/tidesleep/app/
+│   ├── 代码与原型评审.md
+│   └── prototypes/
+└── android/
 ```
 
 ---
@@ -72,13 +87,12 @@
 - **Android SDK 35**（`compileSdk` / `targetSdk`）
 - **minSdk 26**
 
-当前 Cloud Agent 环境未预装 Android SDK，无法在 CI 中完成编译；请在本地 Android Studio 打开 `android/` 目录构建。
-
 ### 本地构建
 
 ```bash
 cd android
 ./gradlew assembleDebug
+./gradlew testDebugUnitTest   # SessionEngine JVM 单元测试
 ```
 
 安装到设备：
@@ -87,12 +101,13 @@ cd android
 ./gradlew installDebug
 ```
 
-### 演示流程（Fake 模式）
+### 演示流程（Fake 模式，≤1 分钟）
 
-1. 打开 App → **今晚** → 点击「今晚就寝」
-2. 切到 **设备** Tab → 点击「模拟入睡」
-3. 等待配置的入睡延迟（默认 15 分钟，可调短以测试）→ 进入稀疏脉冲
-4. 点击「模拟醒来」或「立即停止」→ 会话结束
+1. **首次启动** → 勾选非医疗免责 → 「开始使用」（可点「试听一发脉冲」）
+2. **今晚** → 确认顶部「演示预设 · 延迟 30 秒」→ 点击大圆钮「开启今晚」
+3. **设备** → 「模拟入睡」
+4. 等待 **30 秒** → 自动进入 SessionActive 稀疏脉冲页
+5. 「模拟醒来」或「立即停止」→ **记录** Tab 查看持久化历史（重启后仍保留）
 
 ---
 
@@ -101,24 +116,12 @@ cd android
 使用真实穿戴前，请确认：
 
 1. 手环/手表已绑定 **小米运动健康**
-2. **米家 App** ≥ 10.0，已开启「人车家数据访问管理」中的运动健康数据
+2. **米家 App** ≥ 10.0，已开启运动健康数据访问
 3. 穿戴设备出现在米家设备列表
-4. 上报通道：**HyperOS 2+** 小米手机，或 **蓝牙 Mesh 网关**（部分小爱音箱不支持）
-5. App 内集成小米穿戴第三方 SDK 时需 `Permission.DEVICE_MANAGER`（当前为 Stub）
+4. 上报通道：**HyperOS 2+** 手机或 **蓝牙 Mesh 网关**
+5. 集成小米穿戴 SDK（`DEVICE_MANAGER`）或配置米家自动化
 
-米家无代码验证步骤见 App 内「科学说明与米家向导」或 [调研文档 §4.4](docs/调研与实施方案.md)。
-
----
-
-## 默认安全参数
-
-| 参数 | 默认值 |
-|------|--------|
-| 入睡后延迟 | 15 分钟 |
-| 单晚最长刺激 | 90 分钟 |
-| 脉冲时长 | 50 ms 粉红噪声 |
-| 脉冲间隔 | 4 ± 2 秒随机抖动 |
-| 停止条件 | 出睡 / 超时 / 手动 |
+设备页内含完整 checklist；详见「科学说明与米家向导」。
 
 ---
 

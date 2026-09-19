@@ -41,7 +41,7 @@ fun AboutScreen(onBack: () -> Unit) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("汐眠 TideSleep", style = MaterialTheme.typography.headlineMedium)
                     Text(
-                        text = "版本 0.1.0-mvp",
+                        text = "版本 0.1.1-mvp",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TideOnSurfaceMuted,
                         modifier = Modifier.padding(top = 4.dp),

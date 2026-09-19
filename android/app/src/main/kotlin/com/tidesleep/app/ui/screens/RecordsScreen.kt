@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tidesleep.app.session.SessionPhase
 import com.tidesleep.app.ui.components.SectionHeader
 import com.tidesleep.app.ui.components.TideCard
 import com.tidesleep.app.ui.theme.TideOnSurfaceMuted
@@ -23,8 +24,12 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun RecordsScreen(viewModel: TideSleepViewModel) {
     val session by viewModel.sessionSnapshot.collectAsStateWithLifecycle()
-    val formatter = DateTimeFormatter.ofPattern("HH:mm:ss")
-        .withZone(ZoneId.systemDefault())
+    val history by viewModel.nightHistory.collectAsStateWithLifecycle()
+    val timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
+    val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+
+    val showCurrent = session.timeline.isNotEmpty() &&
+        session.phase != SessionPhase.Idle
 
     Column(
         modifier = Modifier
@@ -33,42 +38,79 @@ fun RecordsScreen(viewModel: TideSleepViewModel) {
     ) {
         SectionHeader(
             title = "记录",
-            subtitle = "本夜时间线与历史摘要（MVP）",
+            subtitle = "历史会话持久化保存，重启后仍可查看",
         )
 
-        if (session.timeline.isEmpty()) {
-            TideCard {
-                Text(
-                    text = "暂无记录。开启「今晚就寝」后，入睡、开播与停止事件将显示于此。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TideOnSurfaceMuted,
-                    modifier = Modifier.padding(16.dp),
-                )
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (showCurrent) {
+                item {
+                    NightRecordCard(
+                        title = "进行中 / 本夜",
+                        pulseCount = session.pulseCount,
+                        stopReason = session.stopReason?.name,
+                        events = session.timeline,
+                        timeFormatter = timeFormatter,
+                    )
+                }
             }
-        } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(session.timeline) { event ->
+
+            if (history.isEmpty() && !showCurrent) {
+                item {
                     TideCard {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(event.label, style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                text = formatter.format(event.timestamp),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TideOnSurfaceMuted,
-                            )
-                        }
+                        Text(
+                            text = "暂无历史记录。使用演示预设，可在 1 分钟内完成一次完整流程。",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TideOnSurfaceMuted,
+                            modifier = Modifier.padding(16.dp),
+                        )
                     }
                 }
             }
 
-            if (session.pulseCount > 0) {
-                TideCard {
-                    Text(
-                        text = "本夜共播放 ${session.pulseCount} 次脉冲",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(16.dp),
-                    )
-                }
+            items(history, key = { "${it.date}-${it.endedAt.toEpochMilli()}" }) { summary ->
+                NightRecordCard(
+                    title = dateFormatter.format(summary.date),
+                    pulseCount = summary.pulseCount,
+                    stopReason = summary.stopReason?.name,
+                    events = summary.timeline,
+                    timeFormatter = timeFormatter,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NightRecordCard(
+    title: String,
+    pulseCount: Int,
+    stopReason: String?,
+    events: List<com.tidesleep.app.session.SessionTimelineEvent>,
+    timeFormatter: DateTimeFormatter,
+) {
+    TideCard {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            if (pulseCount > 0) {
+                Text(
+                    text = "脉冲 ${pulseCount} 次",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TideOnSurfaceMuted,
+                )
+            }
+            if (stopReason != null) {
+                Text(
+                    text = "停止：$stopReason",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TideOnSurfaceMuted,
+                )
+            }
+            events.forEach { event ->
+                Text(
+                    text = "${timeFormatter.format(event.timestamp)} · ${event.label}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
         }
     }

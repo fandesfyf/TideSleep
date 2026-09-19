@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -20,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tidesleep.app.session.SessionPhase
+import com.tidesleep.app.ui.components.SessionTimelineBar
 import com.tidesleep.app.ui.theme.TideError
 import com.tidesleep.app.ui.theme.TideOnSurfaceMuted
 import com.tidesleep.app.ui.theme.TidePrimary
@@ -32,6 +34,7 @@ fun SessionActiveScreen(
     onBack: () -> Unit,
 ) {
     val session by viewModel.sessionSnapshot.collectAsStateWithLifecycle()
+    val safetyConfig by viewModel.safetyConfig.collectAsStateWithLifecycle()
 
     LaunchedEffect(session.phase) {
         if (session.phase == SessionPhase.Stopped || session.phase == SessionPhase.Idle) {
@@ -44,29 +47,44 @@ fun SessionActiveScreen(
             .fillMaxSize()
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
     ) {
+        Text("夜间主动时段", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            text = "正在通过温和脉冲，帮助你更快进入深睡",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TideOnSurfaceMuted,
+            modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
+        )
+
         when (session.phase) {
             SessionPhase.Arming -> {
                 CircularProgressIndicator(color = TidePrimary)
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("准备监听…", style = MaterialTheme.typography.headlineMedium)
+                Text("准备监听…", style = MaterialTheme.typography.titleLarge)
             }
             SessionPhase.WaitingSleep -> {
                 Text("等待入睡", style = MaterialTheme.typography.displayLarge)
-                Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = "穿戴确认入睡后，将延迟 ${viewModel.safetyConfig.postSleepDelay.inWholeMinutes} 分钟再播放",
+                    text = "穿戴确认入睡后，将延迟 ${safetyConfig.formatPostSleepDelay()} 再播放",
                     style = MaterialTheme.typography.bodyLarge,
                     color = TideOnSurfaceMuted,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+            }
+            SessionPhase.WaitingDelay -> {
+                AssistChip(onClick = {}, label = { Text("延迟中") })
+                Text(
+                    text = "已入睡，${safetyConfig.formatPostSleepDelay()}后开始稀疏脉冲",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(top = 12.dp),
                 )
             }
             SessionPhase.Stimulating -> {
-                Text("稀疏脉冲中", style = MaterialTheme.typography.displayLarge)
-                Spacer(modifier = Modifier.height(12.dp))
+                AssistChip(onClick = {}, label = { Text("刺激中") })
                 Text(
                     text = "已播放 ${session.pulseCount} 次 · 50 ms 粉红噪声",
                     style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(top = 12.dp),
                 )
                 Text(
                     text = "剩余 ${formatRemaining(session.remainingStimulationMs)}",
@@ -77,7 +95,7 @@ fun SessionActiveScreen(
             else -> Unit
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        SessionTimelineBar(session = session, modifier = Modifier.padding(vertical = 24.dp))
 
         Text(
             text = session.statusMessage,
@@ -86,6 +104,13 @@ fun SessionActiveScreen(
         )
 
         Spacer(modifier = Modifier.weight(1f))
+
+        Text(
+            text = "你的安全与舒适是优先",
+            style = MaterialTheme.typography.bodySmall,
+            color = TideOnSurfaceMuted,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
 
         Button(
             onClick = { viewModel.stopTonight() },

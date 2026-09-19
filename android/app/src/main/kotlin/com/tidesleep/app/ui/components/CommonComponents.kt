@@ -1,6 +1,7 @@
 package com.tidesleep.app.ui.components
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,14 +18,15 @@ import com.tidesleep.app.ui.theme.TideSurface
 @Composable
 fun TideCard(
     modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = TideSurface),
-        content = content,
-    )
+    ) {
+        Column(content = content)
+    }
 }
 
 @Composable
